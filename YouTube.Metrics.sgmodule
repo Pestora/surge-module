@@ -1,0 +1,11 @@
+#!name=YouTube Metrics
+#!desc=Integrated Enhance and hidden metrics. Enable this module alone; disable the older YouTube Hidden Metrics and Youtube (Music) Enhance modules.
+#!arguments=屏蔽上传按钮:true,屏蔽选段按钮:false,屏蔽Shorts按钮:true,字幕翻译语言:off,启用调试模式:false
+
+[Script]
+youtube.metrics.local = type=http-response,pattern=^https:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/(browse|next|player|search|reel\/reel_watch_sequence|guide|account\/get_setting|get_watch|log_event|config|updated_metadata|live_chat\/(get_live_chat|get_live_chat_replay|get_live_interactivity))(\?.*)?$,requires-body=true,binary-body-mode=true,max-size=-1,script-path=https://raw.githubusercontent.com/Pestora/surge-module/main/youtube-metrics.js,script-update-interval=86400,timeout=10,debug=true,argument="{"captionLang":"{{{字幕翻译语言}}}","blockUpload":{{{屏蔽上传按钮}}},"blockImmersive":{{{屏蔽选段按钮}}},"blockShorts":{{{屏蔽Shorts按钮}}},"debug":{{{启用调试模式}}}}"
+youtube.request.local.init = type=http-request,pattern=^https?:\/\/[\w-]+\.googlevideo\.com\/initplayback.+&ack.*,requires-body=true,max-size=-1,binary-body-mode=true,script-path=https://raw.githubusercontent.com/Pestora/surge-module/main/youtube-enhance-request.js,argument="{"captionLang":"{{{字幕翻译语言}}}"}"
+youtube.request.local.log_event = type=http-request,pattern=^https:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/log_event,requires-body=true,max-size=-1,binary-body-mode=true,script-path=https://raw.githubusercontent.com/Pestora/surge-module/main/youtube-enhance-request.js
+
+[MITM]
+hostname = %APPEND% *.googlevideo.com, youtubei.googleapis.com
