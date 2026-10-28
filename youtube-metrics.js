@@ -95,6 +95,12 @@ function hideMetrics(bytes) {
       }
       if (field.wire !== 2) return raw
       const next = [...path, field.number]
+      // Teaser entities supply preview content; keep their navigation commands and carousel.
+      if ((endsPath(path, [448, 3, 1]) || endsPath(path, [448, 5, 1])) &&
+        containsPath(path, [777, 1, 1, 3, 448]) && [1, 2, 12].includes(field.number)) {
+        state.changes++
+        return new Uint8Array()
+      }
       // EML templates contain code and layout definitions, rather than rendered text.
       if (path.at(-1) === 777 && field.number === 2) return raw
       // addLiveChatTickerItemAction populates the distracting pinned donation/gift rail.
@@ -117,7 +123,7 @@ function hideMetrics(bytes) {
         state.changes++
         return new Uint8Array()
       }
-      if (field.number === 8 && (containsPath(path, [514549827, 1, 1, 2]) || containsPath(path, [312131490, 20, 9, 1, 2, 66])) &&
+      if (field.number === 8 && (containsPath(path, [514549827, 1, 1, 2]) || containsPath(path, [312131490, 20, 9, 1, 2, 66]) || containsPath(path, [312131490, 20, 17, 1, 1, 2, 66])) &&
         decoder.decode(field.data).includes("youtube_outline_experimental/play_24pt")) {
         state.changes++
         return new Uint8Array()
@@ -151,13 +157,16 @@ function hideMetrics(bytes) {
       containsPath(path, [408379376, 1, 1]) && path.at(-1) === 2 ||
       path.some((value, index) => (value === 445 || value === 27 && path[index - 1] === 1017) &&
         [4, 5, 6, 7, 8, 9, 23, 24].includes(path[index + 1]))
-    const metadata = containsPath(path, [514549827, 1, 1, 2]) || containsPath(path, [312131490, 20, 9, 1, 2])
+    const metadata = containsPath(path, [514549827, 1, 1, 2]) || containsPath(path, [312131490, 20, 9, 1, 2]) ||
+      containsPath(path, [312131490, 20, 17, 1, 1, 2]) || containsPath(path, [232971250, 25, 1, 2]) ||
+      endsPath(path, [234662488, 1, 2, 3])
     const amount = containsPath(path, [443499987, 1, 2]) && path.at(-1) === 2
-    const replaced = amount || numeric && metric ? " ".repeat(text.length) : metadata ? text.replace(
-      /(?<= {2})\d[\d,.]*[KMB]?\b(?= {1,3}(?:Streamed\s+|Premiered\s+)?\d+(?:mo\b|yr\b|[smhdwy]\b|\s+(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)))/gi,
+    const replaced = amount || metric && (numeric || /^\s*(?:waiting|watching(?: now)?)\s*$/i.test(text)) ? " ".repeat(text.length) : metadata ? text.replace(
+      /(?<= {2})\d[\d,.]*[KMB]?\b(?= {1,3}(?:Streamed\s+|Premiered\s+)?\d+(?:mo\b|yr\b|[smhdwy]\b|\s+(?:secs?|mins?|hrs?|seconds?|minutes?|hours?|days?|weeks?|months?|years?)))/gi,
       (count) => " ".repeat(count.length),
     ) : text
-    const hidden = hideMetricText(replaced, metadata)
+    const compact = containsPath(path, [232971250, 25, 1, 2]) || endsPath(path, [234662488, 1, 2, 3]) ? replaced.replace(/^\d[\d,.]*[KMB]?(?:\s+waiting)?\s*[·•]\s*/i, "") : replaced
+    const hidden = hideMetricText(compact, metadata)
     if (hidden === text) return bytes
     state.changes++
     return encoder.encode(hidden)
@@ -175,7 +184,7 @@ function endsPath(path, sequence) {
 
 function hideMetricText(text, preserveLength = false) {
   const count = "[\\d０-９][\\d０-９,，.．]*(?:\\s*(?:[KMB万萬亿億千百]|thousand|million|billion))?"
-  const units = "(?:views?|likes?|dislikes?|subscribers?|comments?|repl(?:y|ies)|watching(?: now)?|viewers?|人正在观看|人正在觀看|次观看|次觀看|次播放|次赞|次讚|个赞|個讚|条评论|條評論|位订阅者|位訂閱者|人が視聴中|回視聴|件のコメント)"
+  const units = "(?:views?|likes?|dislikes?|subscribers?|comments?|repl(?:y|ies)|watching(?: now)?|waiting|viewers?|人正在观看|人正在觀看|次观看|次觀看|次播放|次赞|次讚|个赞|個讚|条评论|條評論|位订阅者|位訂閱者|人が視聴中|回視聴|件のコメント)"
   const metric = new RegExp(`${count}\\s*${units}`, "gi")
   if (text.includes(" - ") && /play video$/.test(text)) {
     return text.split(" - ").filter((part, index) => index === 0 || !new RegExp(`^${count}\\s*${units}$`, "i").test(part)).join(" - ")
@@ -211,7 +220,7 @@ captureMetricsSample()
 const enhance = /\/v1\/(browse|next|player|search|reel\/reel_watch_sequence|guide|account\/get_setting|get_watch|log_event|config)(\?.*)?$/.test($request.url)
 function finish(output = {}) {
   const result = hideMetrics(new Uint8Array(output.body || $response.body))
-  console.log(JSON.stringify({ build: "youtube-metrics-local1", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261028b", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
