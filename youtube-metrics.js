@@ -96,7 +96,7 @@ function hideMetrics(bytes) {
       if (field.wire !== 2) return raw
       const next = [...path, field.number]
       // Teaser entities supply preview content; keep their navigation commands and carousel.
-      if ((endsPath(path, [448, 3, 1]) || endsPath(path, [448, 5, 1])) &&
+      if ((endsPath(path, [448, 3, 1]) || endsPath(path, [448, 5, 1]) || endsPath(path, [448, 6, 1])) &&
         containsPath(path, [777, 1, 1, 3, 448]) && [1, 2, 12].includes(field.number)) {
         state.changes++
         return new Uint8Array()
@@ -220,7 +220,17 @@ captureMetricsSample()
 const enhance = /\/v1\/(browse|next|player|search|reel\/reel_watch_sequence|guide|account\/get_setting|get_watch|log_event|config)(\?.*)?$/.test($request.url)
 function finish(output = {}) {
   const result = hideMetrics(new Uint8Array(output.body || $response.body))
-  console.log(JSON.stringify({ build: "youtube-metrics-20261028b", enhance, changes: result.changes }))
+  if (/\/live_chat\/get_live_chat\?/.test($request.url) && /[?&]metrics_interactivity=1(?:&|$)/.test($request.url)) {
+    const continuation = [4, 117294427, 1, 70339736].reduce((bytes, number) =>
+      bytes && fields(bytes)?.find((field) => field.number === number && field.wire === 2)?.data, result.body)
+    const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
+    const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
+    $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
+    console.log(JSON.stringify({ build: "youtube-metrics-20261030c", enhance, changes: result.changes, chat: "short", interval }))
+    $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
+    return
+  }
+  console.log(JSON.stringify({ build: "youtube-metrics-20261030c", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
