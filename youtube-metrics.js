@@ -95,6 +95,13 @@ function hideMetrics(bytes) {
       }
       if (field.wire !== 2) return raw
       const next = [...path, field.number]
+      // iPad embeds teaser/composer content in the metadata carousel instead of entities.
+      if (containsPath(path, [408379376, 1, 2, 11]) &&
+        (endsPath(path, [33561759, 7, 1178]) && [1, 2, 12].includes(field.number) ||
+          endsPath(path, [408379376, 1, 2, 11, 1304]) && [1, 2].includes(field.number))) {
+        state.changes++
+        return new Uint8Array()
+      }
       // Teaser entities supply preview content; keep their navigation commands and carousel.
       if ((endsPath(path, [448, 3, 1]) || endsPath(path, [448, 5, 1]) || endsPath(path, [448, 6, 1])) &&
         containsPath(path, [777, 1, 1, 3, 448]) && [1, 2, 12].includes(field.number)) {
@@ -226,11 +233,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261030c", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261102a", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261030c", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261102a", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
