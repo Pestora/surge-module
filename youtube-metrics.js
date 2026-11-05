@@ -75,6 +75,12 @@ function hideMetrics(bytes) {
   const state = { changes: 0 }
   const decoder = new TextDecoder()
   const encoder = new TextEncoder()
+  const home = decoder.decode(messageAt(bytes, [9, 58173949, 1, 58174010, 11]) ||
+    messageAt(bytes, [9, 58173949, 1, 58174010, 1, 48687626, 2]) || new Uint8Array()) === "FEwhat_to_watch" ||
+    (fields(messageAt(bytes, [1]) || new Uint8Array()) || []).some((service) => service.number === 6 && service.data &&
+      fields(service.data)?.some((parameter) => parameter.number === 2 && parameter.data &&
+        decoder.decode(messageAt(parameter.data, [1]) || new Uint8Array()) === "browse_id" &&
+        decoder.decode(messageAt(parameter.data, [2]) || new Uint8Array()) === "FEwhat_to_watch"))
   function rewrite(bytes, path) {
     if (path.length > 96) return bytes
     const message = fields(bytes)
@@ -95,6 +101,22 @@ function hideMetrics(bytes) {
       }
       if (field.wire !== 2) return raw
       const next = [...path, field.number]
+      // Remove whole Home feed entries, retaining other tabs and ordinary video cards.
+      if (path.at(-1) === 49399797 && field.number === 1) {
+        const section = messageAt(field.data, [50195462])
+        if (section && (home || fields(section)?.some((entry) => entry.number === 13 && entry.data &&
+          /_browse-feedFEwhat_to_watch$/.test(decoder.decode(entry.data))))) {
+          const component = messageAt(section, [1, 153515154, 172660663, 1, 168777401, 5])
+          const playlist = component && messageAt(component, [232954548, 18, 4, 169495254, 48687757, 2])
+          const header = component && messageAt(component, [312131490, 20, 1])
+          if (playlist && /^RD/.test(decoder.decode(playlist)) || header &&
+            fields(header)?.some((entry) => [20, 26].includes(entry.number) && entry.data && decoder.decode(entry.data) === "Watch it again") &&
+            decoder.decode(messageAt(header, [4, 169495254, 48687626, 2]) || new Uint8Array()) === "FEhistory") {
+            state.changes++
+            return new Uint8Array()
+          }
+        }
+      }
       // iPad embeds teaser/composer content in the metadata carousel instead of entities.
       if (containsPath(path, [408379376, 1, 2, 11]) &&
         (endsPath(path, [33561759, 7, 1178]) && [1, 2, 12].includes(field.number) ||
@@ -185,6 +207,10 @@ function containsPath(path, sequence) {
   return path.some((_, index) => sequence.every((value, offset) => path[index + offset] === value))
 }
 
+function messageAt(bytes, path) {
+  return path.reduce((body, number) => body && fields(body)?.find((field) => field.number === number && field.wire === 2)?.data, bytes)
+}
+
 function endsPath(path, sequence) {
   return sequence.every((value, index) => path[path.length - sequence.length + index] === value)
 }
@@ -233,11 +259,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261102a", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261105c", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261102a", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261105c", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
