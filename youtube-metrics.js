@@ -120,7 +120,7 @@ function hideMetrics(bytes) {
       // iPad embeds teaser/composer content in the metadata carousel instead of entities.
       if (containsPath(path, [408379376, 1, 2, 11]) &&
         (endsPath(path, [33561759, 7, 1178]) && [1, 2, 12].includes(field.number) ||
-          endsPath(path, [408379376, 1, 2, 11, 1304]) && [1, 2].includes(field.number))) {
+          [1303, 1304].includes(path.at(-1)) && [1, 2].includes(field.number))) {
         state.changes++
         return new Uint8Array()
       }
@@ -182,6 +182,7 @@ function hideMetrics(bytes) {
       path.some((value, index) => value === 194 && [2, 3, 4, 10].includes(path[index + 1])) ||
       containsPath(path, [1017, 2, 4]) ||
       containsPath(path, [497, 2]) ||
+      endsPath(path, [1107, 27, 477514866, 2]) ||
       containsPath(path, [40, 4]) && [5, 6, 11].includes(path.at(-1)) ||
       containsPath(path, [408379376, 1, 1]) && path.at(-1) === 2 ||
       path.some((value, index) => (value === 445 || value === 27 && path[index - 1] === 1017) &&
@@ -259,11 +260,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261105c", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261108a", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261105c", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261108a", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
