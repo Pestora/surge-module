@@ -101,20 +101,66 @@ function hideMetrics(bytes) {
       }
       if (field.wire !== 2) return raw
       const next = [...path, field.number]
-      // Remove whole Home feed entries, retaining other tabs and ordinary video cards.
+      // Drop the presentation command for the Premium mealbar, not its containing player response.
+      if (endsPath(next, [182224395, 1])) {
+        const content = messageAt(field.data, [138681778, 2, 138681066, 3, 49399797, 1, 50195462,
+          1, 153515154, 172660663, 1, 168777401])
+        const template = content && messageAt(content, [3, 172035250, 1])
+        const commands = content && messageAt(content, [5, 361004337, 2, 4, 1, 4, 170382688])
+        if (template && decoder.decode(template).startsWith("mealbar_promo.eml") &&
+          commands && [1, 170382656, 1, 169495254, 48687626, 2].reduce((parents, number) =>
+            parents.flatMap((parent) => (fields(parent) || []).filter((child) => child.number === number && child.data)
+              .map((child) => child.data)), [commands]).some((id) => decoder.decode(id) === "SPunlimited")) {
+          state.changes++
+          return new Uint8Array()
+        }
+      }
+      // A search section can contain multiple cards. Remove only the promoted child.
+      if (field.number === 1 && endsPath(path, [49399797, 1, 50195462]) &&
+        isFeaturedCard(messageAt(field.data, [153515154, 172660663, 1, 168777401, 5]), decoder)) {
+        state.changes++
+        return new Uint8Array()
+      }
+      // Hyped is a badge in both standard and horizontal video cards.
+      if ((endsPath(next, [514549827, 1, 2, 1147]) || endsPath(next, [312131490, 20, 9, 1, 2, 6])) &&
+        fields(field.data)?.some((entry) => entry.number === 7 && entry.data &&
+          decoder.decode(entry.data) === "youtube_fill_experimental/hype_24pt")) {
+        state.changes++
+        return new Uint8Array()
+      }
+      // Shopping counts and AI summaries share the same expandable metadata field.
+      if (endsPath(next, [232954548, 33])) {
+        const label = messageAt(field.data, [1, 6])
+        if (label && /^\d[\d,.]* products? in this video$/i.test(decoder.decode(label))) {
+          state.changes++
+          return new Uint8Array()
+        }
+      }
+      // Only inspect a feed entry's own card or shelf header, never a child video's menu.
       if (path.at(-1) === 49399797 && field.number === 1) {
         const section = messageAt(field.data, [50195462])
-        if (section && (home || fields(section)?.some((entry) => entry.number === 13 && entry.data &&
-          /_browse-feedFEwhat_to_watch$/.test(decoder.decode(entry.data))))) {
-          const component = messageAt(section, [1, 153515154, 172660663, 1, 168777401, 5])
-          const playlist = component && messageAt(component, [232954548, 18, 4, 169495254, 48687757, 2])
-          const header = component && messageAt(component, [312131490, 20, 1])
-          if (playlist && /^RD/.test(decoder.decode(playlist)) || header &&
-            fields(header)?.some((entry) => [20, 26].includes(entry.number) && entry.data && decoder.decode(entry.data) === "Watch it again") &&
-            decoder.decode(messageAt(header, [4, 169495254, 48687626, 2]) || new Uint8Array()) === "FEhistory") {
-            state.changes++
-            return new Uint8Array()
-          }
+        const component = section && messageAt(section, [1, 153515154, 172660663, 1, 168777401, 5])
+        const shelf = messageAt(field.data, [51845067])
+        const header = component && messageAt(component, [312131490, 20, 1])
+        const richHeader = shelf && messageAt(shelf, [36, 153515154, 172660663, 1, 168777401, 5, 229393850, 1])
+        const homeEntry = home || section && fields(section)?.some((entry) => entry.number === 13 && entry.data &&
+          /_browse-feedFEwhat_to_watch$/.test(decoder.decode(entry.data)))
+        const watch = homeEntry && component && messageAt(component, [232954548, 18, 4, 169495254])
+        const mixOrShort = watch && [[], [462702848, 1], [462702848, 1, 200453700, 1]].some((wrapper) => {
+          const playlist = messageAt(watch, [...wrapper, 48687757, 2])
+          return playlist && /^RD/.test(decoder.decode(playlist)) || messageAt(watch, [...wrapper, 139608561])
+        })
+        const history = homeEntry && header && fields(header)?.some((entry) =>
+          [20, 26].includes(entry.number) && entry.data && decoder.decode(entry.data) === "Watch it again") &&
+          decoder.decode(messageAt(header, [4, 169495254, 48687626, 2]) || new Uint8Array()) === "FEhistory"
+        const footer = richHeader && messageAt(shelf, [50, 153515154, 172660663, 1, 168777401, 3, 172035250, 1])
+        const shorts = homeEntry && footer && decoder.decode(footer).startsWith("shorts_grid_shelf_footer.eml") &&
+          messageAt(shelf, [5, 51431404])
+        if (mixOrShort || history || shorts ||
+          component && fields(section)?.filter((entry) => entry.number === 1).length === 1 && isFeaturedCard(component, decoder) ||
+          homeEntry && (isFeedBanner(header, decoder, true) || isFeedBanner(richHeader, decoder, true))) {
+          state.changes++
+          return new Uint8Array()
         }
       }
       // iPad embeds teaser/composer content in the metadata carousel instead of entities.
@@ -208,6 +254,30 @@ function containsPath(path, sequence) {
   return path.some((_, index) => sequence.every((value, offset) => path[index + offset] === value))
 }
 
+function isFeedBanner(header, decoder, shelf = false) {
+  if (!header) return false
+  const attribution = messageAt(header, [47, 1147, 1])
+  if (attribution && decoder.decode(attribution) === "YouTube featured") return true
+  const menu = messageAt(header, [19, 1, 169495254, 98150882, 1, 66439850])
+  return menu && fields(menu)?.some((item) => {
+    if (item.number !== 1 || !item.data) return false
+    const action = messageAt(item.data, [66441155, 3])
+    if (!action) return false
+    const infoPanel = messageAt(action, [138681778, 2, 138681066, 18, 3])
+    return infoPanel && decoder.decode(infoPanel) === "AboutYouTubeFeaturedEP" ||
+      shelf && Boolean(messageAt(action, [65153809, 4, 77297283, 1]))
+  })
+}
+
+function isFeaturedCard(component, decoder) {
+  if (!component) return false
+  const statement = messageAt(component, [325515470, 2])
+  const destination = statement && messageAt(statement, [11, 1, 4, 170382656, 1, 169495254, 48687626, 2])
+  return destination && decoder.decode(destination) === "SPunlimited" ||
+    isFeedBanner(statement && messageAt(statement, [29]), decoder) ||
+    isFeedBanner(messageAt(component, [398541176, 2, 1, 28]), decoder)
+}
+
 function messageAt(bytes, path) {
   return path.reduce((body, number) => body && fields(body)?.find((field) => field.number === number && field.wire === 2)?.data, bytes)
 }
@@ -260,11 +330,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261108a", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261111f", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261108a", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261111f", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
