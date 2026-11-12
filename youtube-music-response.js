@@ -304,11 +304,11 @@ function hideMetricText(text, preserveLength = false) {
 }
 
 
-const musicCount = "[\\d０-９][\\d０-９,.，．]*\\s*(?:[KMB万萬亿億千百]|thousand|million|billion)?"
+const musicCount = "[0-9０-９]+(?:[.,，．٬٫][0-9０-９]+|[ \\u00a0\\u202f\\u2009][0-9０-９]{3})*\\s*(?:[KMB万萬亿億千百]|thousand|million|billion)?"
+const musicMetricName = "播放次[数數]|播放量|播放回数|觀看次數|观看次数|觀看量|观看量|再生回数|每月[听聽][众眾]|月度[听聽][众眾]|點讚數|点赞数|訂閱數|订阅数|評[論论][數数]|评论数|monthly (?:audience|listeners?)|plays?|views?|likes?|subscribers?|comments?|shares?"
 const musicMetric = new RegExp(
-  `^(?:(?:播放次[数數]|播放量|觀看次數|观看次数|每月[听聽][众眾]|月度[听聽][众眾]|播放回数)\\s*[:：]\\s*${musicCount}|` +
-  `${musicCount}\\s*(?:plays?|views?|monthly (?:listeners?|audience)|subscribers?|likes?|comments?|shares?|次(?:播放|观看|觀看|點閱|分享)|位[订訂][阅閱]者|位[听聽][众眾]|条评论|條評論|回視聴|回再生)|` +
-  `(?:monthly (?:audience|listeners?)|plays?|views?)\\s*[:：]\\s*${musicCount})$`, "i",
+  `^(?:(?:${musicMetricName})\\s*[:：]\\s*${musicCount}|` +
+  `${musicCount}\\s*(?:plays?|views?|monthly (?:listeners?|audience)|subscribers?|likes?|comments?|shares?|次(?:播放|观看|觀看|點閱|分享)|位[订訂][阅閱]者|位[听聽][众眾]|条评论|條評論|回視聴|回再生))$`, "i",
 )
 const musicBlockedDestinations = /^(?:SPunlimited|FEmusic_(?:activity_feed|immersive|explore|charts|listening_review|trophies_list))$/
 const musicSearchFilters = /^(?:社区播放列表|社群播放清單|精选播放列表|精選播放清單|个人资料|個人資料|播客|分集|community playlists|featured playlists|profiles|podcasts|episodes)$/i
@@ -321,9 +321,13 @@ function cleanMusic(body, endpoint) {
   const textAt = (bytes, ...path) => decoder.decode(messageAt(bytes, path))
   const icon = (value) => /\/(?:share|thumb_up|thumb_down|text_bubble|notifications|samples|immersive)_\d+pt$/.test(value)
   const tab = endpoint === "browse" && messageAt(body, [9, 58173949, 1, 58174010])
-  const browseId = tab ? textAt(tab, 11) || textAt(tab, 1, 48687626, 2) : ""
-  const recommendationCards = browseId === "FEmusic_home" || /^UC/.test(browseId) ||
-    endpoint === "next" || endpoint === "search"
+  const browseId = tab && (textAt(tab, 11) || textAt(tab, 1, 48687626, 2))
+  // Continuation responses can omit the tab. Use the service's browse_id in that case.
+  const home = endpoint === "browse" && (browseId ? browseId === "FEmusic_home" :
+    fields(messageAt(body, [1]) || empty)?.some((service) => service.number === 6 && service.data &&
+      fields(service.data)?.some((entry) => entry.number === 2 && entry.data &&
+        textAt(entry.data, 1) === "browse_id" && textAt(entry.data, 2) === "FEmusic_home")))
+  const recommendationCards = home || /^UC/.test(browseId || "") || endpoint === "next" || endpoint === "search"
   const recommendations = ["browse", "next", "get_watch", "search", "music/get_search_suggestions"].includes(endpoint)
   const suggestions = endpoint === "music/get_search_suggestions"
   const watch = endpoint === "next" || endpoint === "get_watch"
@@ -368,6 +372,9 @@ function cleanMusic(body, endpoint) {
           /^(?:评论最多的曲目|評論最多的曲目|Most commented tracks)$/i.test(comments) ||
           // This renderer is the large, single-community-playlist recommendation.
           Boolean(messageAt(model, [453436776, 1, 28])) && /^(?:来自社区|來自社群|From the community)$/i.test(textAt(model, 453436776, 1, 29, 1))
+      }
+      if (home && parent === 49399797 && n === 6 && messageAt(data, [90823135, 1, 91394224])) {
+        remove = true
       }
       if (path.at(-2) === 404005902 && parent === 1 && n === 3 && recommendations) {
         const destination = textAt(data, 4, 169495254, 48687626, 2)
@@ -433,16 +440,19 @@ function cleanMusic(body, endpoint) {
       const suggestionMetadata = suggestions && path.includes(161429595) &&
         (path[path.indexOf(161429595) + 1] === 4 || parent === 3 && path.at(-2) === 1051)
       const subtitle = suggestionMetadata || [404005902, 405953475, 410090561, 1223, 1375, 453436776, 1258, 221496734].some((id) => path.includes(id))
-      if ((subtitle || recommendations && !suggestions && [3, 4, 5, 32].includes(n)) &&
+      const homeTitle = home && (path.at(-2) === 405953475 && parent === 6 && n === 2 ||
+        path.at(-3) === 404005902 && parent === 3 && n === 1)
+      if (!homeTitle && (subtitle || recommendations && !suggestions && [3, 4, 5, 32].includes(n)) &&
         data.length && data.length < 2048 && data[0] >= 32) {
         const label = decoder.decode(data)
         if (!/[\u0000-\u001f\ufffd]/.test(label) && !label.includes("://")) {
-          const parts = label.split(/\s*[•·]\s*/)
-          const kept = parts.filter((part) => !musicMetric.test(part.trim()))
-          if (kept.length !== parts.length && (subtitle || parts.length > 1)) {
+          const parts = label.split(home ? /(\s*[•·・‧∙]\s*)/ : /(\s*[•·]\s*)/)
+          const kept = parts.flatMap((part, index) => index % 2 ||
+            musicMetric.test(part.replace(/[\u200e\u200f\u2066-\u2069]/g, "").trim()) ? [] : [index])
+          if (kept.length * 2 < parts.length + 1 && (subtitle || parts.length > 1)) {
             changes++
             if (!kept.length) return empty
-            rewritten = encoder.encode(kept.join(" • "))
+            rewritten = encoder.encode(kept.map((index, position) => (position ? parts[index - 1] : "") + parts[index]).join(""))
           }
         }
       }
@@ -490,7 +500,7 @@ if (isMusicClient($request.headers)) {
   const original = new Uint8Array($response.body || [])
   const finishMusic = (output = {}) => {
     const result = cleanMusic(output.body ? new Uint8Array(output.body) : original, endpoint)
-    console.log(JSON.stringify({ build: "youtube-music-20261112d", endpoint, changes: result.changes }))
+    console.log(JSON.stringify({ build: "youtube-music-20261112e", endpoint, changes: result.changes }))
     $done(result.changes ? { ...output, body: result.body } : output)
   }
   if (original.length && /^(?:browse|next|player|search|guide|account\/get_setting|get_watch|log_event|config)$/.test(endpoint)) {
