@@ -308,7 +308,7 @@ const musicCount = "[0-9０-９]+(?:[.,，．٬٫][0-9０-９]+|[ \\u00a0\\u202f
 const musicMetricName = "播放次[数數]|播放量|播放回数|觀看次數|观看次数|觀看量|观看量|再生回数|每月[听聽][众眾]|月度[听聽][众眾]|點讚數|点赞数|訂閱數|订阅数|評[論论][數数]|评论数|monthly (?:audience|listeners?)|plays?|views?|likes?|subscribers?|comments?|shares?"
 const musicMetric = new RegExp(
   `^(?:(?:${musicMetricName})\\s*[:：]\\s*${musicCount}|` +
-  `${musicCount}\\s*(?:plays?|views?|monthly (?:listeners?|audience)|subscribers?|likes?|comments?|shares?|次(?:播放|观看|觀看|點閱|分享)|位[订訂][阅閱]者|位[听聽][众眾]|条评论|條評論|回視聴|回再生))$`, "i",
+  `${musicCount}\\s*(?:plays?|views?|watching(?: now)?|viewers?|monthly (?:listeners?|audience)|subscribers?|likes?|comments?|shares?|人正在[观觀]看|人が視聴中|次(?:播放|观看|觀看|點閱|分享)|位[订訂][阅閱]者|位[听聽][众眾]|条评论|條評論|回視聴|回再生))$`, "i",
 )
 const musicBlockedDestinations = /^(?:SPunlimited|FEmusic_(?:activity_feed|immersive|explore|charts|listening_review|trophies_list))$/
 const musicSearchFilters = /^(?:社区播放列表|社群播放清單|精选播放列表|精選播放清單|个人资料|個人資料|播客|分集|community playlists|featured playlists|profiles|podcasts|episodes)$/i
@@ -346,6 +346,17 @@ function cleanMusic(body, endpoint) {
       const n = field.number
       const next = [...path, n]
       let remove = false
+      if (home && path.length === 0 && n === 30) {
+        // Drop the presentation command before the app opens the Premium interstitial.
+        const promo = messageAt(data, [204158123, 221293762, 2, 1, 1, 168777401])
+        if (/^image_centric_interstitial\.eml/.test(textAt(promo, 3, 172035250, 1))) {
+          const actions = messageAt(promo, [5, 248229245, 1, 8, 1, 4, 170382688])
+          remove = [1, 170382656, 1, 169495254, 48687626, 2].reduce((parents, number) =>
+            parents.flatMap((bytes) => (fields(bytes) || [])
+              .filter((entry) => entry.number === number && entry.data).map((entry) => entry.data)),
+          actions ? [actions] : []).some((id) => decoder.decode(id) === "SPunlimited")
+        }
+      }
       const assetIndex = path.lastIndexOf(777)
       if (assetIndex !== -1 && next[assetIndex + 1] === 2) {
         const assetPath = [2, 1, 328964737, 1]
@@ -500,7 +511,7 @@ if (isMusicClient($request.headers)) {
   const original = new Uint8Array($response.body || [])
   const finishMusic = (output = {}) => {
     const result = cleanMusic(output.body ? new Uint8Array(output.body) : original, endpoint)
-    console.log(JSON.stringify({ build: "youtube-music-20261112e", endpoint, changes: result.changes }))
+    console.log(JSON.stringify({ build: "youtube-music-20261113b", endpoint, changes: result.changes }))
     $done(result.changes ? { ...output, body: result.body } : output)
   }
   if (original.length && /^(?:browse|next|player|search|guide|account\/get_setting|get_watch|log_event|config)$/.test(endpoint)) {
