@@ -14,10 +14,22 @@ function isMusicClient(headers = {}) {
     ["26", "IOS_MUSIC"].includes(String(value)))
 }
 
+// Each request executes one matching Surge rule. Read the other rule only
+// when its client needs the settings or enablement from that module.
+function findYouTubeScript(name, callback) {
+  if (typeof $httpAPI !== "function") {
+    callback()
+    return
+  }
+  $httpAPI("GET", "/v1/scripting", {}, (result) =>
+    callback(result?.scripts?.find((script) => script.name === name && script.enabled)))
+}
+
+function handleRequest(musicPlayback) {
 // Encrypted Onesie responses bypass the metadata response filter. Use the same
 // empty response as Enhance's expired-key fallback to request filterable v1 data.
 if ($request.url.includes("/initplayback") &&
-  (isMusicClient($request.headers) || !($request.headers["user-agent"] || $request.headers["User-Agent"] || "").includes("music"))) {
+  (musicPlayback || !($request.headers["user-agent"] || $request.headers["User-Agent"] || "").includes("music"))) {
   const config = JSON.parse($persistentStore.read("YouTubeConfig") || "{}")
   delete config[isMusicClient($request.headers) ? "youtubeMusic" : "youtube"]
   $persistentStore.write(JSON.stringify(config), "YouTubeConfig")
@@ -27,4 +39,13 @@ if ($request.url.includes("/initplayback") &&
   runEnhanceRequest()
 }
 
+}
+if ($request.url.includes("/initplayback") && isMusicClient($request.headers) && typeof $script !== "undefined" && $script.name === "youtube.video.request.init") {
+  findYouTubeScript("youtube.music.request.init", (musicRule) => {
+    if (musicRule) handleRequest(true)
+    else runEnhanceRequest()
+  })
+} else {
+  handleRequest(isMusicClient($request.headers))
+}
 })();

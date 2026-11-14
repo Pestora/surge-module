@@ -485,6 +485,17 @@ function isMusicClient(headers = {}) {
     ["26", "IOS_MUSIC"].includes(String(value)))
 }
 
+// Each request executes one matching Surge rule. Read the other rule only
+// when its client needs the settings or enablement from that module.
+function findYouTubeScript(name, callback) {
+  if (typeof $httpAPI !== "function") {
+    callback()
+    return
+  }
+  $httpAPI("GET", "/v1/scripting", {}, (result) =>
+    callback(result?.scripts?.find((script) => script.name === name && script.enabled)))
+}
+
 function captureMetricsSample() {
   if ($persistentStore.read("youtube-metrics-capture") !== "on") return
   const endpoint = $request.url.split("/v1/")[1]?.split("?")[0].replace(/\//g, "_")
@@ -502,32 +513,7 @@ function captureMetricsSample() {
 }
 
 captureMetricsSample()
-// Some installed test modules also matched get_panel. Pass it through.
-if (/\/v1\/get_panel(?:\?|$)/.test($request.url)) {
-  $done({})
-  return
-}
-if (isMusicClient($request.headers)) {
-  const endpoint = $request.url.split("/v1/")[1]?.split("?")[0]
-  const original = new Uint8Array($response.body || [])
-  const finishMusic = (output = {}) => {
-    const result = cleanMusic(output.body ? new Uint8Array(output.body) : original, endpoint)
-    console.log(JSON.stringify({ build: "youtube-music-20261113b", endpoint, changes: result.changes }))
-    $done(result.changes ? { ...output, body: result.body } : output)
-  }
-  if (original.length && /^(?:browse|next|player|search|guide|account\/get_setting|get_watch|log_event|config)$/.test(endpoint)) {
-    runEnhance(finishMusic, JSON.stringify({ captionLang: "off", blockUpload: false, blockImmersive: true, blockShorts: false }))
-  } else {
-    finishMusic()
-  }
-  return
-}
-// Music-only endpoints share the URL matcher with the normal YouTube handler.
-if (/\/v1\/music\/get_search_suggestions(?:\?|$)/.test($request.url)) {
-  $done({})
-  return
-}
-
+function finishVideoResponse(argument) {
 const enhance = /\/v1\/(browse|next|player|search|reel\/reel_watch_sequence|guide|account\/get_setting|get_watch|log_event|config)(\?.*)?$/.test($request.url)
 function finish(output = {}) {
   const result = hideMetrics(new Uint8Array(output.body || $response.body))
@@ -545,7 +531,53 @@ function finish(output = {}) {
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
-if (enhance) runEnhance(finish, $argument)
+if (enhance) runEnhance(finish, argument)
 if (!enhance) finish()
+
+}
+
+// Some installed test modules also matched get_panel. Pass it through.
+if (/\/v1\/get_panel(?:\?|$)/.test($request.url)) {
+  $done({})
+  return
+}
+const musicClient = isMusicClient($request.headers)
+if (musicClient && typeof $script !== "undefined" && $script.name === "youtube.video.response") {
+  findYouTubeScript("youtube.music.response", (musicRule) => {
+    if (musicRule) finishMusicResponse()
+    else $done({})
+  })
+  return
+}
+if (musicClient) {
+  finishMusicResponse()
+  return
+}
+
+function finishMusicResponse() {
+  const endpoint = $request.url.split("/v1/")[1]?.split("?")[0]
+  const original = new Uint8Array($response.body || [])
+  const finishMusic = (output = {}) => {
+    const result = cleanMusic(output.body ? new Uint8Array(output.body) : original, endpoint)
+    console.log(JSON.stringify({ build: "youtube-music-20261113b", endpoint, changes: result.changes }))
+    $done(result.changes ? { ...output, body: result.body } : output)
+  }
+  if (original.length && /^(?:browse|next|player|search|guide|account\/get_setting|get_watch|log_event|config)$/.test(endpoint)) {
+    runEnhance(finishMusic, JSON.stringify({ captionLang: "off", blockUpload: false, blockImmersive: true, blockShorts: false }))
+  } else {
+    finishMusic()
+  }
+}
+// Music-only endpoints share the URL matcher with the normal YouTube handler.
+if (/\/v1\/music\/get_search_suggestions(?:\?|$)/.test($request.url)) {
+  $done({})
+  return
+}
+if (typeof $script !== "undefined" && $script.name === "youtube.music.response") {
+  findYouTubeScript("youtube.video.response", (videoRule) =>
+    finishVideoResponse(videoRule?.parameters?.argument ?? $argument))
+} else {
+  finishVideoResponse($argument)
+}
 
 })();
