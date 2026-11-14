@@ -257,9 +257,9 @@ function containsPath(path, sequence) {
   return path.some((_, index) => sequence.every((value, offset) => path[index + offset] === value))
 }
 
-function isFeedBanner(header, decoder, shelf = false) {
+function isFeedBanner(header, decoder, shelf = false, attributionField = 47) {
   if (!header) return false
-  const attribution = messageAt(header, [47, 1147, 1])
+  const attribution = messageAt(header, [attributionField, 1147, 1])
   if (attribution && decoder.decode(attribution) === "YouTube featured") return true
   const menu = messageAt(header, [19, 1, 169495254, 98150882, 1, 66439850])
   return menu && fields(menu)?.some((item) => {
@@ -278,7 +278,8 @@ function isFeaturedCard(component, decoder) {
   const destination = statement && messageAt(statement, [11, 1, 4, 170382656, 1, 169495254, 48687626, 2])
   return destination && decoder.decode(destination) === "SPunlimited" ||
     isFeedBanner(statement && messageAt(statement, [29]), decoder) ||
-    isFeedBanner(messageAt(component, [398541176, 2, 1, 28]), decoder)
+    isFeedBanner(messageAt(component, [398541176, 2, 1, 28]), decoder) ||
+    isFeedBanner(messageAt(component, [400581496, 2, 1, 28]), decoder, false, 40)
 }
 
 function endsPath(path, sequence) {
@@ -536,11 +537,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261111f", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261114a", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261111f", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261114a", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
