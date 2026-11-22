@@ -104,6 +104,20 @@ function hideMetrics(bytes) {
       }
       if (field.wire !== 2) return raw
       const next = [...path, field.number]
+      // Segmented cards carry the view icon, value and accessibility label in one repeated row.
+      if (endsPath(next, [514549827, 1, 1]) &&
+        (decoder.decode(messageAt(field.data, [6, 1]) || new Uint8Array()) === "youtube_outline_experimental/play_24pt" ||
+          containsPath(path, [508686415, 4]) && /^\d[\d,.]*[KMB]?\s+(?:videos?|subscribers?)$/i.test(
+            decoder.decode(messageAt(field.data, [2, 1]) || new Uint8Array()),
+          ))) {
+        state.changes++
+        return new Uint8Array()
+      }
+      // Native History cards use a separate compact view-count message.
+      if (endsPath(next, [50630979, 23])) {
+        state.changes++
+        return new Uint8Array()
+      }
       // Drop the presentation command for the Premium mealbar, not its containing player response.
       if (endsPath(next, [182224395, 1])) {
         const content = messageAt(field.data, [138681778, 2, 138681066, 3, 49399797, 1, 50195462,
@@ -227,11 +241,14 @@ function hideMetrics(bytes) {
       containsPath(path, [338620094, 1, 10]) || containsPath(path, [443499987, 1, 3]) ||
       containsPath(path, [443499987, 1, 1]) || path.at(-1) === 36) return bytes
     const numeric = /^[\d,.\s]+(?:[KMB万萬亿億千百万億])?$/i.test(text)
+    const playlistCount = endsPath(path, [202672916, 16, 1, 6]) || endsPath(path, [202672916, 16, 1, 43])
+    const playlistLabel = endsPath(path, [202672916, 16, 5])
     const metric = containsPath(path, [218178449, 2]) ||
       path.some((value, index) => value === 194 && [2, 3, 4, 10].includes(path[index + 1])) ||
       containsPath(path, [1017, 2, 4]) ||
       containsPath(path, [497, 2]) ||
       endsPath(path, [1107, 27, 477514866, 2]) ||
+      containsPath(path, [777, 1, 1, 3, 63]) && [3, 5].includes(path.at(-1)) && path.at(-2) === 63 ||
       containsPath(path, [40, 4]) && [5, 6, 11].includes(path.at(-1)) ||
       containsPath(path, [408379376, 1, 1]) && path.at(-1) === 2 ||
       path.some((value, index) => (value === 445 || value === 27 && path[index - 1] === 1017) &&
@@ -245,7 +262,9 @@ function hideMetrics(bytes) {
       (count) => " ".repeat(count.length),
     ) : text
     const compact = containsPath(path, [232971250, 25, 1, 2]) || endsPath(path, [234662488, 1, 2, 3]) ? replaced.replace(/^\d[\d,.]*[KMB]?(?:\s+waiting)?\s*[·•]\s*/i, "") : replaced
-    const hidden = hideMetricText(compact, metadata)
+    const hidden = playlistCount && (numeric || /^\d[\d,.]*[KMB]?\s+videos?$/i.test(text)) ? "" :
+      playlistLabel ? compact.replace(/ - \d[\d,.]*[KMB]?\s+videos?(?=(?: - Updated .*)?$)/i, "") :
+        hideMetricText(compact, metadata)
     if (hidden === text) return bytes
     state.changes++
     return encoder.encode(hidden)
@@ -523,11 +542,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261114a", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261122b", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261114a", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261122b", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
