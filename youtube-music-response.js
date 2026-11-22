@@ -76,6 +76,7 @@ function messageAt(bytes, path) {
 
 function hideMetrics(bytes) {
   const state = { changes: 0 }
+  const short = !!messageAt(bytes, [3, 139970731])
   const decoder = new TextDecoder()
   const encoder = new TextEncoder()
   const home = decoder.decode(messageAt(bytes, [9, 58173949, 1, 58174010, 11]) ||
@@ -90,6 +91,14 @@ function hideMetrics(bytes) {
     if (!message) return bytes
     const chunks = message.map((field) => {
       const raw = bytes.subarray(field.start, field.end)
+      // Immersive players have their own overlay, separate from ordinary watch pages.
+      if (short && (path.length === 0 && field.number === 30 ||
+          endsPath(path, [413471385, 1, 2041]) && field.number === 3 ||
+          endsPath(path, [2041, 1, 1198]) && field.number === 1 && field.data &&
+            !fields(field.data)?.some((item) => [1213, 1080].includes(item.number)))) {
+        state.changes++
+        return new Uint8Array()
+      }
       // The live header renders its audience text and outline icon independently.
       if (path.at(-1) === 138681548 && [2, 7].includes(field.number) &&
         message.some((entry) => entry.number === 1 && entry.data && decoder.decode(entry.data).includes("Live chat"))) {
@@ -163,9 +172,11 @@ function hideMetrics(bytes) {
         const homeEntry = home || section && fields(section)?.some((entry) => entry.number === 13 && entry.data &&
           /_browse-feedFEwhat_to_watch$/.test(decoder.decode(entry.data)))
         const watch = homeEntry && component && messageAt(component, [232954548, 18, 4, 169495254])
-        const mixOrShort = watch && [[], [462702848, 1], [462702848, 1, 200453700, 1]].some((wrapper) => {
-          const playlist = messageAt(watch, [...wrapper, 48687757, 2])
-          return playlist && /^RD/.test(decoder.decode(playlist)) || messageAt(watch, [...wrapper, 139608561])
+        const playlistWatch = watch || homeEntry && component &&
+          messageAt(component, [413471385, 1, 8179, 997, 3, 3, 169495254])
+        const mixOrShort = playlistWatch && [[], [462702848, 1], [462702848, 1, 200453700, 1]].some((wrapper) => {
+          const playlist = messageAt(playlistWatch, [...wrapper, 48687757, 2])
+          return playlist && /^RD/.test(decoder.decode(playlist)) || watch && messageAt(watch, [...wrapper, 139608561])
         })
         const history = homeEntry && header && fields(header)?.some((entry) =>
           [20, 26].includes(entry.number) && entry.data && decoder.decode(entry.data) === "Watch it again") &&
@@ -236,7 +247,7 @@ function hideMetrics(bytes) {
     if (/[\u0000-\u001f\ufffd]/.test(text) || /https?:\/\/|\.eml[-|]|^[A-Za-z0-9_%=-]{40,}$/.test(text)) return bytes
     // Comment content and video titles must retain their original numbers.
     if (containsPath(path, [40, 2, 3]) || containsPath(path, [218178449, 1]) || containsPath(path, [8178, 1]) ||
-      containsPath(path, [1019, 1]) || containsPath(path, [290800601, 1, 1]) || containsPath(path, [370844319, 3]) ||
+      containsPath(path, [1019, 1]) || containsPath(path, [2041, 1, 1198, 1, 1080, 1]) || containsPath(path, [290800601, 1, 1]) || containsPath(path, [370844319, 3]) ||
       containsPath(path, [61479009, 1]) || containsPath(path, [11, 15]) ||
       containsPath(path, [338620094, 1, 10]) || containsPath(path, [443499987, 1, 3]) ||
       containsPath(path, [443499987, 1, 1]) || path.at(-1) === 36) return bytes
@@ -542,11 +553,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261122b", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261122c", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261122b", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261122c", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
