@@ -226,7 +226,7 @@ function hideMetrics(bytes) {
         state.changes++
         return new Uint8Array()
       }
-      if (field.number === 8 && (containsPath(path, [514549827, 1, 1, 2]) || containsPath(path, [312131490, 20, 9, 1, 2, 66]) || containsPath(path, [312131490, 20, 17, 1, 1, 2, 66])) &&
+      if (field.number === 8 && (containsPath(path, [514549827, 1, 1, 2]) || containsPath(path, [312131490, 20, 9, 1, 2, 66]) || containsPath(path, [312131490, 20, 17, 1, 1, 2, 66]) || endsPath(path, [471792238, 4, 2, 1, 1, 2, 66])) &&
         decoder.decode(field.data).includes("youtube_outline_experimental/play_24pt")) {
         state.changes++
         return new Uint8Array()
@@ -247,7 +247,7 @@ function hideMetrics(bytes) {
     if (/[\u0000-\u001f\ufffd]/.test(text) || /https?:\/\/|\.eml[-|]|^[A-Za-z0-9_%=-]{40,}$/.test(text)) return bytes
     // Comment content and video titles must retain their original numbers.
     if (containsPath(path, [40, 2, 3]) || containsPath(path, [218178449, 1]) || containsPath(path, [8178, 1]) ||
-      containsPath(path, [1019, 1]) || containsPath(path, [2041, 1, 1198, 1, 1080, 1]) || containsPath(path, [290800601, 1, 1]) || containsPath(path, [370844319, 3]) ||
+      endsPath(path, [471792238, 4, 2, 1, 1, 2, 1]) || containsPath(path, [1019, 1]) || containsPath(path, [2041, 1, 1198, 1, 1080, 1]) || containsPath(path, [290800601, 1, 1]) || containsPath(path, [370844319, 3]) ||
       containsPath(path, [61479009, 1]) || containsPath(path, [11, 15]) ||
       containsPath(path, [338620094, 1, 10]) || containsPath(path, [443499987, 1, 3]) ||
       containsPath(path, [443499987, 1, 1]) || path.at(-1) === 36) return bytes
@@ -266,7 +266,8 @@ function hideMetrics(bytes) {
         [4, 5, 6, 7, 8, 9, 23, 24].includes(path[index + 1]))
     const metadata = containsPath(path, [514549827, 1, 1, 2]) || containsPath(path, [312131490, 20, 9, 1, 2]) ||
       containsPath(path, [312131490, 20, 17, 1, 1, 2]) || containsPath(path, [232971250, 25, 1, 2]) ||
-      endsPath(path, [234662488, 1, 2, 3])
+      endsPath(path, [234662488, 1, 2, 3]) || endsPath(path, [471792238, 4, 2, 1, 1, 2, 3]) ||
+      endsPath(path, [471792238, 4, 2, 1, 1, 2, 66, 1])
     const amount = containsPath(path, [443499987, 1, 2]) && path.at(-1) === 2
     const replaced = amount || metric && (numeric || /^\s*(?:waiting|watching(?: now)?)\s*$/i.test(text)) ? " ".repeat(text.length) : metadata ? text.replace(
       /(?<= {2})\d[\d,.]*[KMB]?\b(?= {1,3}(?:Streamed\s+|Premiered\s+)?\d+(?:mo\b|yr\b|[smhdwy]\b|\s+(?:secs?|mins?|hrs?|seconds?|minutes?|hours?|days?|weeks?|months?|years?)))/gi,
@@ -553,11 +554,11 @@ function finish(output = {}) {
     const timeout = continuation && fields(continuation)?.find((field) => field.number === 1 && field.wire === 0)
     const interval = Math.min(10000, Math.max(500, timeout ? varint(continuation, timeout.start + 1)?.value || 1000 : 1000))
     $persistentStore.write(String(Date.now() + interval), "youtube-metrics-chat-next")
-    console.log(JSON.stringify({ build: "youtube-metrics-20261122c", enhance, changes: result.changes, chat: "short", interval }))
+    console.log(JSON.stringify({ build: "youtube-metrics-20261124a", enhance, changes: result.changes, chat: "short", interval }))
     $done({ ...output, body: concat([new Uint8Array([10]), encodeVarint(result.body.length), result.body]) })
     return
   }
-  console.log(JSON.stringify({ build: "youtube-metrics-20261122c", enhance, changes: result.changes }))
+  console.log(JSON.stringify({ build: "youtube-metrics-20261124a", enhance, changes: result.changes }))
   $done(result.changes ? { ...output, body: result.body } : output)
 }
 // One response handler owns both transforms; module order cannot bypass the second one.
