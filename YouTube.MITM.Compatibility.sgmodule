@@ -1,0 +1,6 @@
+#!name=YouTube MITM Compatibility
+#!desc=当 YouTube 首页卡在 Surge 的 HTTP/2 MITM 连接建立阶段时启用。对当前配置的全部 MITM 主机使用 HTTP/1.1。与正式 YouTube 模组搭配使用。
+#!version=2026.11.24
+
+[MITM]
+h2 = false
