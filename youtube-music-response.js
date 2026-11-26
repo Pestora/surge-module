@@ -378,6 +378,14 @@ function cleanMusic(body, endpoint) {
       const n = field.number
       const next = [...path, n]
       let remove = false
+      if (home && path.length === 0 && n === 20) {
+        // A Premium acquisition flow can open a full-screen carousel on Home.
+        const flow = messageAt(data, [371777145])
+        if (/\bpremium\b/i.test(textAt(flow, 1)) && fields(data)?.length === 1) {
+          const promo = messageAt(flow, [3, 363438807, 2, 434773029, 2, 204158123, 221293762, 2, 1, 1, 168777401])
+          remove = /_interstitial\.eml(?:[|-]|$)/.test(textAt(promo, 3, 172035250, 1))
+        }
+      }
       if (home && path.length === 0 && n === 30) {
         // Drop the presentation command before the app opens the Premium interstitial.
         const promo = messageAt(data, [204158123, 221293762, 2, 1, 1, 168777401])
@@ -590,7 +598,7 @@ function finishMusicResponse() {
   const original = new Uint8Array($response.body || [])
   const finishMusic = (output = {}) => {
     const result = cleanMusic(output.body ? new Uint8Array(output.body) : original, endpoint)
-    console.log(JSON.stringify({ build: "youtube-music-20261113b", endpoint, changes: result.changes }))
+    console.log(JSON.stringify({ build: "youtube-music-20261126a", endpoint, changes: result.changes }))
     $done(result.changes ? { ...output, body: result.body } : output)
   }
   if (original.length && /^(?:browse|next|player|search|guide|account\/get_setting|get_watch|log_event|config)$/.test(endpoint)) {
